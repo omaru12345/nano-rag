@@ -1,64 +1,63 @@
-# nano-rag Development Roadmap
+# nano-rag — Development Roadmap
 
-本ドキュメントは、プロジェクトのMVP完成およびOSS公開までの12週間（約3ヶ月）の開発ロードマップ、評価プロトコル、およびリスク管理を定義する。
+This document covers the 12-week (≈ 3-month) plan to MVP and OSS release, plus the evaluation protocol and risk management.
 
-## 1. 開発フェーズと週単位タスク分解 (12-Week Plan)
+## 1. Phases and weekly task breakdown (12-week plan)
 
-### Phase 1: Core Engine Development (Week 1 - 4)
-RustによるONNX推論とHNSWインデックスエンジンの構築。
+### Phase 1: Core engine development (Weeks 1–4)
+Build the ONNX inference + HNSW index engine in Rust.
 
-*   **Week 1**: プロジェクトセットアップ。Rustライブラリ初期化、ONNX Runtime Mobileコンパイル検証。
-*   **Week 2**: Sentence-Transformersモデルのint8量子化、推論パイプライン構築。
-    *   *DoD (Definition of Done)*: テキストから384次元int8ベクトルが生成され、精度劣化がベースラインの95%以上を維持すること。
-*   **Week 3**: HNSWアルゴリズムのRust実装（mmapバックエンド対応）。
-    *   *DoD*: ベクトル1万件の挿入、検索が正しく機能し、ユニットテストのカバレッジ80%以上。
-*   **Week 4**: SQLite/Zstdを用いたドキュメントストアとHNSWの結合、Arena Allocator実装。
-    *   *DoD*: テキスト入力→ベクトル化→保存→クエリの統合テストがパスすること。
+*   **Week 1**: Project setup. Initialize the Rust library; verify ONNX Runtime Mobile compilation.
+*   **Week 2**: INT8 quantization of a Sentence-Transformers model; assemble the inference pipeline.
+    *   *DoD*: Text → 384-dim int8 vector with ≥ 95% of baseline accuracy retained.
+*   **Week 3**: Rust HNSW implementation (with mmap backend).
+    *   *DoD*: Insert / search 10k vectors correctly. Unit-test coverage ≥ 80%.
+*   **Week 4**: Wire the document store (SQLite / Zstd) to HNSW; implement the Arena allocator.
+    *   *DoD*: End-to-end integration test (text → vector → store → query) passes.
 
-### Phase 2: Android Integration & Optimization (Week 5 - 8)
-JNIバインディングとAndroid特有の電力・メモリ最適化。
+### Phase 2: Android integration & optimization (Weeks 5–8)
+JNI bindings and Android-specific power / memory optimization.
 
-*   **Week 5**: JNIバインディング実装、`DirectByteBuffer`を用いたZero-Copyインターフェースの構築。
-    *   *DoD*: Kotlin側からGCをトリガーせずにインサートとクエリが実行できること。
-*   **Week 6**: KotlinラッパーAPI設計、Androidライブラリ（AAR）化のビルドパイプライン（Gradle + Cargo）構築。
-*   **Week 7**: WorkManager連携による遅延インデックス構築、サーマルスロットリング制御（Thermal API連携）の実装。
-    *   *DoD*: バッテリー充電中・アイドル時のみバックグラウンドでインデックス処理が走ることを確認。
-*   **Week 8**: NNAPI / XNNPACK の動的ルーティング実装。
-    *   *DoD*: Tensor搭載機(NNAPI)と非搭載機(XNNPACK)で正常に推論が実行され、クラッシュしないこと。
+*   **Week 5**: JNI bindings; build the zero-copy interface using `DirectByteBuffer`.
+    *   *DoD*: Insert and query from Kotlin without triggering GC.
+*   **Week 6**: Design the Kotlin wrapper API. Build the AAR pipeline (Gradle + Cargo).
+*   **Week 7**: Deferred indexing via WorkManager. Thermal-throttling control via the Thermal API.
+    *   *DoD*: Background indexing only runs while charging / idle.
+*   **Week 8**: Adaptive NNAPI / XNNPACK routing.
+    *   *DoD*: Inference runs cleanly without crashes on both Tensor (NNAPI) and non-Tensor (XNNPACK) devices.
 
-### Phase 3: Benchmarking, Packaging & OSS Launch (Week 9 - 12)
-ベンチマーク取得、ドキュメント化、およびパブリックリリース。
+### Phase 3: Benchmarking, packaging, and OSS launch (Weeks 9–12)
+Benchmark numbers, documentation, public release.
 
-*   **Week 9**: ベンチマークデータセットによる精度・パフォーマンステスト実施。
-*   **Week 10**: Android Battery HistorianとPerfettoを用いた電力・メモリプロファイリング、ボトルネック解消。
-    *   *DoD*: Architecture.mdで定義したKPI（ピーク電力<1W, RAM<50MB, クエリ<50ms）を全項目クリア。
-*   **Week 11**: サンプルアプリ実装（Gemini Nano / Android AICore連携のデモ）、APIドキュメント（Dokka/Rustdoc）作成。
-*   **Week 12**: Maven Central公開、GitHubリポジトリのOSS化、Medium/Zennでの技術ブログ公開。
+*   **Week 9**: Run accuracy / performance tests on the benchmark dataset.
+*   **Week 10**: Power and memory profiling with Android Battery Historian and Perfetto; close the bottlenecks.
+    *   *DoD*: All KPIs in `architecture.md` met (peak power < 1 W, RAM < 50 MB, query < 50 ms).
+*   **Week 11**: Sample app (Gemini Nano / Android AICore integration demo). API docs (Dokka / Rustdoc).
+*   **Week 12**: Maven Central release. Open the GitHub repo. Publish technical blog posts (Medium / Zenn).
 
-## 2. ベンチマーク用データセットと評価プロトコル
+## 2. Benchmark datasets and evaluation protocol
 
-**データセット**:
-1. **Wikipedia Subsets (SQuAD v2 ベース)**: 汎用的な知識検索のレイテンシと精度（Recall@5）の測定。
-2. **Simulated Personal Data**: LINE/Slackのチャットエクスポートデータ、標準メモアプリの形式を模したダミーデータ（10,000チャンク）。文脈のチャンキング精度の評価に使用。
+**Datasets**:
+1. **Wikipedia subsets (SQuAD v2 base)**: Generic-knowledge retrieval — measure latency and accuracy (Recall@5).
+2. **Simulated personal data**: 10,000 chunks of dummy data shaped like LINE / Slack chat exports and standard notes-app entries. Used to evaluate context chunking quality.
 
-**評価プロトコル**:
-- **Macrobenchmark**: AndroidX Macrobenchmarkを利用し、実機でのコールドスタートおよびクエリレイテンシ（p50, p90, p95）を自動測定。
-- **Battery Historian**: 1万件のインデックス構築タスクをバックグラウンドで実行し、CPU WakeLock、無線LAN使用状況を含めたトータルのmAh消費量を測定。
-- **Perfetto Trace**: JNI境界でのシステムコールのオーバーヘッド、およびメモリ割り当てのスパイクを可視化。
+**Evaluation protocol**:
+- **Macrobenchmark**: AndroidX Macrobenchmark on real devices, automated cold-start and query latency (p50, p90, p95).
+- **Battery Historian**: Total mAh consumption for indexing 10k items in the background (CPU WakeLock, Wi-Fi included).
+- **Perfetto Trace**: Visualize JNI-boundary syscall overhead and any allocation spikes.
 
-## 3. 想定リスクと回避策
+## 3. Risks and mitigations
 
-| リスク | 影響度 | 回避策 |
+| Risk | Severity | Mitigation |
 | :--- | :--- | :--- |
-| **Androidのバージョン断片化** | 高 | サポート対象を **Min SDK 26 (Android 8.0)** に限定。NNAPIの挙動差異を吸収するため、OSバージョンごとのフォールバックロジックを実装。 |
-| **端末の性能差（SoCごとの特性）** | 中 | 端末プロファイル（High/Mid/Low）をアプリ起動時に判定。Lowエンド機ではONNXのバッチサイズを最小化し、OOMを回避する。 |
-| **電力プロファイラの測定差異** | 高 | 特定端末での過剰最適化を防ぐため、Pixel 6, 7, 8 および Galaxy S22（Snapdragon環境）の物理デバイスファームをFirebase Test Lab等と併用して確保。 |
+| **Android version fragmentation** | High | Cap supported minimum SDK at **26 (Android 8.0)**. Implement OS-version branches to absorb NNAPI behavior differences. |
+| **Device performance variance (per-SoC)** | Med | Profile devices into High / Mid / Low at startup. Use the smallest ONNX batch on Low-tier devices to avoid OOM. |
+| **Inconsistent power-profiler measurements** | High | To avoid over-fitting to one device, secure physical farms covering Pixel 6, 7, 8 and Galaxy S22 (Snapdragon), supplemented by Firebase Test Lab. |
 
-## 4. 技術的不確実性への対応
+## 4. Handling technical uncertainty
 
-**最大の不確実性**: ONNX Runtime MobileにおけるNNAPIデリゲートの安定性。
-特定のAndroidベンダー（特にカスタムROMや安価なMediaTek SoC）では、NNAPIのドライバにバグがあり、推論結果がNaNになる、またはクラッシュする事例が報告されている。
+**Biggest uncertainty**: stability of the NNAPI delegate inside ONNX Runtime Mobile.
+On certain Android vendors (especially custom ROMs and some inexpensive MediaTek SoCs), NNAPI driver bugs can cause inference to return NaN or to crash.
 
-**対応策（Fallback Strategy）**:
-SDK初期化時に、テスト用ダミーテンソルを用いた「ウォームアップ・バリデーション」を実行する。
-推論結果のベクトルが期待値（事前にハードコードしたハッシュ値）と大きく乖離する場合、あるいはタイムアウトが発生した場合は、そのセッションではNNAPIを無効化し、強制的にCPU（XNNPACK）モードへフォールバックするフェイルセーフ機構を実装する。これによりSDKの致命的クラッシュ率（Crash-Free Users）99.9%以上を担保する。
+**Fallback strategy**:
+On SDK init we run a "warm-up validation" with a known dummy tensor. If the embedding deviates significantly from the hard-coded expected hash, or if it times out, we disable NNAPI for the session and force the CPU path (XNNPACK). This fail-safe keeps Crash-Free Users at 99.9%+.

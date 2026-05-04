@@ -1,10 +1,10 @@
-# nano-rag System Architecture
+# nano-rag — System Architecture
 
-本ドキュメントは、超軽量・低消費電力RAG SDK「nano-rag」のアーキテクチャ設計、データフロー、メモリ管理、および性能目標を定義する。
+This document defines the architecture, data flow, memory management, and performance targets of the tiny low-power RAG SDK "nano-rag".
 
-## 1. システム構成図
+## 1. System diagram
 
-AndroidアプリケーションからKotlin JNIを経由し、Rustコアで推論・検索を行い、最終的にGemini Nanoへプロンプトを供給する全体のアーキテクチャを示す。
+The end-to-end flow: an Android app calls the Kotlin API, JNI hands off to the Rust core for inference and search, and finally context is fed into Gemini Nano.
 
 ```mermaid
 graph TD
@@ -39,52 +39,52 @@ graph TD
     App -->|Prompt + Context| Gemini
 ```
 
-## 2. Rust ↔ JNI ↔ Kotlin データフロー
+## 2. Rust ↔ JNI ↔ Kotlin data flow
 
-シリアライゼーションのオーバーヘッドを極限まで削るため、Zero-Copyアーキテクチャを採用する。
+To strip serialization overhead, the boundary is zero-copy by design.
 
-1. **インサート時 (Kotlin → Rust)**:
-   - Kotlin側でテキストをUTF-8エンコードし、`ByteBuffer.allocateDirect()` でヒープ外メモリに配置。
-   - JNI経由でポインタと長さをRustへ渡す。Rust側は `std::slice::from_raw_parts` でバイト列を直接参照（Zero-Copy）。
-2. **推論＆検索 (Rust内部)**:
-   - テキストをチャンク化し、ONNX Runtimeでint8ベクトル化。
-   - HNSWインデックスにベクトルを登録。
-3. **クエリ時 (Rust → Kotlin)**:
-   - 検索結果（ドキュメントIDと距離スコアの配列）を、Rust側で事前に確保した `Arena` アロケータから取得。
-   - JNIを通じてKotlin側に `LongArray` および `FloatArray` として直接書き込む（Primitive Array Criticalを活用し、ガベージコレクション(GC)の停止を最小化）。
+1. **Insert (Kotlin → Rust)**:
+   - Kotlin UTF-8 encodes the text and places it in `ByteBuffer.allocateDirect()` (off-heap).
+   - JNI passes the pointer and length to Rust, which references the bytes directly via `std::slice::from_raw_parts` (zero copy).
+2. **Inference & search (inside Rust)**:
+   - Chunk the text, vectorize with ONNX Runtime to int8.
+   - Insert the vector into the HNSW index.
+3. **Query (Rust → Kotlin)**:
+   - Pull search results (document IDs and distance scores) from a pre-allocated `Arena` allocator on the Rust side.
+   - Write directly into Kotlin `LongArray` / `FloatArray` over JNI (using `GetPrimitiveArrayCritical` to minimize GC pauses).
 
-## 3. メモリ管理戦略
+## 3. Memory management strategy
 
-モバイル環境の厳しいRAM制限（ピーク50MB以下）をクリアするための戦略。
+How we hit a peak RAM budget under 50 MB on hostile mobile devices.
 
-- **mmapによる遅延読み込み**: HNSWのグラフ構造およびベクトルデータ、ドキュメントストレージはすべて `mmap` を用いて仮想メモリ空間にマッピングする。OSのページキャッシュに依存し、アプリケーションのDalvik/ARTヒープを消費しない。
-- **アリーナアロケータ (Arena Allocator)**: Rust内部でのクエリ処理時、動的メモリ確保（`malloc`/`free`）によるフラグメンテーションとオーバーヘッドを防ぐため、スレッドローカルなBump Arenaを使用し、リクエスト単位で一括解放する。
-- **Zero-Copy JNI**: JNI境界での文字列・配列のコピーを排除。JNIの `GetPrimitiveArrayCritical` および `DirectByteBuffer` のみをデータ転送のブリッジとして使用する。
+- **mmap for lazy load**: HNSW graph and vectors and the document store are all `mmap`ed into the virtual address space. We rely on the OS page cache and never touch the Dalvik / ART heap.
+- **Arena allocator**: For per-query work in Rust, a thread-local Bump Arena replaces `malloc` / `free`. The whole arena is freed in one shot at the end of the request, eliminating fragmentation.
+- **Zero-copy JNI**: No string / array copying across the JNI boundary. Only `GetPrimitiveArrayCritical` and `DirectByteBuffer` cross the bridge.
 
-## 4. 消費電力最適化テクニック
+## 4. Power-optimization techniques
 
-バッテリ消費を抑え、サーマルスロットリングを回避する。
+How we keep battery cost low and avoid thermal throttling.
 
-- **バッチ処理と遅延インデックス構築**: 新規ドキュメントのベクトル化とHNSWグラフ構築は即時実行せず、キューに積む。Androidの `WorkManager` と連携し、「充電中」かつ「デバイスアイドル時」にバッチでONNX推論を実行する。
-- **NNAPI / XNNPACK の適応的ルーティング**: 端末のSoCを判定し、NPUが利用可能な端末（Pixel Tensor等）ではNNAPIデリゲートを有効化。非対応端末ではCPUのNEON命令に最適化されたXNNPACKへフォールバックし、推論の消費電力を最小化する。
-- **スリープ制御**: 長時間のインデックス構築時、SoCの温度センサー（Thermal API）を監視。設定温度（例: 38℃）を超過した場合は自動的に処理をサスペンド（`sleep`）し、サーマルスロットリングによる電力効率の悪化を防ぐ。
+- **Batched, deferred indexing**: New documents are queued, not processed immediately. We use Android `WorkManager` so ONNX inference batches run only "while charging and idle".
+- **Adaptive routing across NNAPI / XNNPACK**: Detect the SoC. On NPU-equipped devices (e.g. Pixel Tensor) we enable the NNAPI delegate; otherwise we fall back to the NEON-tuned XNNPACK.
+- **Sleep gating**: During long indexing runs we monitor the SoC's thermal sensors (Thermal API). Above a threshold (e.g. 38 °C) we suspend (`sleep`) to avoid thermal throttling and the resulting power-efficiency cliff.
 
-## 5. ストレージレイアウト
+## 5. Storage layout
 
-インデックスは以下の3層構造でファイルシステムに永続化する。
+The index is persisted in three layered files.
 
-1. **`index.hnsw` (ベクトル＆グラフ)**:
-   - ヘッダ + ノード配列（mmapフレンドリなC構造体のバイナリダンプ）。
-   - 各ノードは近傍ノードID配列と、量子化済みint8ベクトル（次元数384なら384バイト）を隣接して配置し、キャッシュヒット率を最大化。
-2. **`doc.store` (チャンクデータ)**:
-   - Zstandard (zstd) 辞書圧縮を用いたドキュメントチャンクのバイナリBLOB。
-3. **`meta.db` (メタデータ)**:
-   - SQLite。ドキュメントID、URI（元のファイルパスやメッセージID）、作成日時のマッピングを保持。
+1. **`index.hnsw` (vectors + graph)**:
+   - Header + node array (a binary dump of mmap-friendly C structs).
+   - Each node stores neighbor IDs and the quantized int8 vector contiguously (e.g. 384 bytes for 384-dim) to maximize cache hits.
+2. **`doc.store` (chunk data)**:
+   - Document chunks as a binary BLOB compressed with Zstandard (zstd) using a trained dictionary.
+3. **`meta.db` (metadata)**:
+   - SQLite. Maps document ID → URI (source path or message ID) and creation timestamp.
 
-## 6. 目標数値 (KPIs)
+## 6. Targets (KPIs)
 
-- **消費電力**: インデックス構築時ピーク < 1W / クエリ時ピーク < 300mW
-- **インデックスサイズ**: 10,000チャンク（約200万文字）で **< 5MB**（Zstd圧縮テキスト + int8ベクトル + HNSWグラフ）
-- **クエリレイテンシ**: Top-5 検索において **< 50ms (p95)** （テキストからベクトルへの変換 + HNSW検索）
-- **RAMピーク使用量**: **< 50MB**（ONNXモデルのインメモリ展開 <30MB を含む）
-- **バイナリサイズ**: AARサイズ **< 15MB** (arm64-v8a ネイティブライブラリ + モデルファイル)
+- **Power**: peak < 1 W during indexing / peak < 300 mW during a query
+- **Index size**: 10,000 chunks (~2 M characters) in **< 5 MB** (zstd-compressed text + int8 vectors + HNSW graph)
+- **Query latency**: top-5 search in **< 50 ms (p95)** (text-to-vector + HNSW search)
+- **Peak RAM**: **< 50 MB** (including in-memory ONNX model under 30 MB)
+- **Binary size**: AAR **< 15 MB** (arm64-v8a native lib + model file)

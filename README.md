@@ -1,84 +1,83 @@
 # nano-rag
 
-スマホ内の文書（メモ・メッセージ・PDF）をローカルでベクトル化し、
-オンデバイス LLM（Gemini Nano など）に文脈を供給するための **超軽量・低消費電力 RAG SDK**。
+A **tiny, low-power RAG SDK** that vectorizes on-device documents (notes, messages, PDFs) locally and feeds context to on-device LLMs (Gemini Nano and similar).
 
 ---
 
-## 🎯 Goal: Googleに買収されること
+## 🎯 Goal: Acquisition by Google
 
-このプロジェクトは「Google による Jetpac 型 acqui-hire（3〜5人 / 技術コア）」をエグジット目標とする。
+This project targets a **Jetpac-style acqui-hire by Google** (3–5 person team / technical core).
 
-**買収対象は SDK そのもの。** Android / Pixel チームが自社 OS にバンドルするレベルまで完成度を上げる。
+**The acquisition target is the SDK itself.** We polish it to a quality bar where the Android / Pixel team can bundle it directly into the OS.
 
-| 想定買収先 | 統合シナリオ |
+| Likely buyer | Integration scenario |
 |---|---|
-| **Android AI Core** | Gemini Nano に文脈を渡す標準 RAG レイヤー（OS API として開放）|
-| **Pixel チーム** | Pixel の "魔法のような" 文脈アシスタント機能の基盤 |
-| **Workspace モバイル** | Drive / Gmail / Docs のオフライン検索 |
+| **Android AI Core** | The standard RAG layer that supplies context to Gemini Nano (exposed as an OS-level API). |
+| **Pixel team** | Foundation for Pixel's "magical" contextual assistant features. |
+| **Workspace mobile** | Offline search across Drive / Gmail / Docs. |
 
-### 評価される技術の堀（moat）
-1. **消費電力**（連続インデックス時に 1 時間あたり 5%以下のバッテリー消費）
-2. **インデックスサイズ**（10,000 文書で 50MB 以下）
-3. **クエリレイテンシ**（top-10 検索を 50ms 以下）
-4. **メモリ効率**（実行時 RAM ピーク 100MB 以下）
+### Technical moat we are paid for
+1. **Power consumption** (≤ 5% battery per hour during continuous indexing)
+2. **Index size** (10,000 documents in ≤ 50 MB)
+3. **Query latency** (top-10 search in ≤ 50 ms)
+4. **Memory efficiency** (peak RAM ≤ 100 MB at runtime)
 
 ---
 
-## 技術スタック
+## Tech stack
 
-| レイヤー | 技術 |
+| Layer | Tech |
 |---|---|
-| コア | Rust（cdylib として Android NDK / iOS にビルド） |
-| 埋め込み | Sentence-Transformers の小型モデルを ONNX → 量子化（< 30MB） |
-| ベクトル検索 | HNSW を Rust で再実装（or `instant-distance` を fork） |
-| Android ラッパー | Kotlin + JNI |
-| iOS ラッパー（後回し） | Swift + C インターフェイス |
+| Core | Rust (built as a `cdylib` for Android NDK / iOS) |
+| Embeddings | A small Sentence-Transformers model exported to ONNX and quantized (< 30 MB) |
+| Vector search | HNSW reimplemented in Rust (or a fork of `instant-distance`) |
+| Android wrapper | Kotlin + JNI |
+| iOS wrapper (later) | Swift + a C interface |
 
 ---
 
-## ディレクトリ構成
+## Repository layout
 
 ```
 nano-rag/
-├── core/                # Rust 実装（埋め込み + HNSW + ストレージ）
-├── android/             # AAR ライブラリ（Kotlin + JNI）
-├── bench/               # 消費電力 / レイテンシベンチ
-└── docs/                # API ドキュメント / 買収ピッチ
+├── core/                # Rust implementation (embeddings + HNSW + storage)
+├── android/             # AAR library (Kotlin + JNI)
+├── bench/               # Power / latency benchmarks
+└── docs/                # API documentation / acquisition pitch
 ```
 
 ---
 
-## 3 フェーズ計画
+## Three-phase plan
 
-### Phase 1（〜2か月）: コア実装
-- [ ] Rust で埋め込み計算（ONNX Runtime 経由）
-- [ ] HNSW でベクトル検索が動く
-- [ ] 1,000 文書で end-to-end が動くデモ CLI
+### Phase 1 (≤ 2 months): Core implementation
+- [ ] Embedding computation in Rust (via ONNX Runtime)
+- [ ] Working HNSW vector search
+- [ ] End-to-end demo CLI on 1,000 documents
 
-### Phase 2（〜4か月）: Android SDK
-- [ ] AAR をローカルでビルド可能に
-- [ ] サンプル Android アプリ（メモアプリ + RAG 検索）
-- [ ] ベンチで消費電力・レイテンシを公表
+### Phase 2 (≤ 4 months): Android SDK
+- [ ] Buildable AAR locally
+- [ ] Sample Android app (notes app + RAG search)
+- [ ] Publish power / latency benchmark numbers
 
-### Phase 3（〜6か月）: 露出
-- [ ] GitHub に OSS 公開（MIT / Apache 2.0）
-- [ ] Maven Central に SDK 公開
-- [ ] Android Dev Summit / Google I/O 周辺での露出
+### Phase 3 (≤ 6 months): Visibility
+- [ ] Open-source on GitHub (MIT / Apache 2.0)
+- [ ] Publish the SDK to Maven Central
+- [ ] Get visibility around Android Dev Summit / Google I/O
 
 ---
 
-## 開発コマンド
+## Development commands
 
 ```bash
-# Rust コア
+# Rust core
 cd core && cargo build --release && cargo test
 
-# Android SDK ビルド
+# Android SDK build
 cd android && ./gradlew assembleRelease
 
-# ベンチ
+# Benchmarks
 cd bench && cargo run --release -- --dataset wiki1k
 ```
 
-（実装は Phase 1 着手時に追加）
+(Implementations land when Phase 1 starts.)
