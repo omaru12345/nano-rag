@@ -1,5 +1,9 @@
 # CLAUDE.md — nano-rag
 
+> 🚨 **MUST READ FIRST**: 作業を始める前に [`rules/README.md`](rules/README.md) を起点に `rules/` 配下の全ファイルを読むこと。
+> `rules/` の内容は本ファイルより**優先**される（矛盾した場合は rules/ が勝つ）。
+> ルールが不明確、もしくはユーザーの依頼と矛盾する場合は、実装前に必ずユーザーに確認すること。
+
 ## プロジェクト概要
 
 オンデバイス RAG SDK。**Rust コア + Android (Kotlin) ラッパー**。
@@ -33,8 +37,6 @@ refactoring-{name}-{description}
 - Android: `./gradlew test`
 - ベンチが回る変更ならローカルベンチ実行
 
-## やらないこと
+## スコープ（やる / やらない）
 
-- LLM 本体の実装（Gemini Nano に任せる）
-- iOS 対応（Phase 4 以降。最初は Android に集中）
-- クラウド同期機能（オンデバイスを徹底）
+[`rules/02-scope.md`](rules/02-scope.md) を正とする。CLAUDE.md には重複記載しない。
